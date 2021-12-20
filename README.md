@@ -16,3 +16,36 @@ us-east-1使用自定义Metric，根据官方文档https://docs.aws.amazon.com/z
 aws sqs get-queue-attributes --queue-url https://sqs.region.amazonaws.com/123456789/MyQueue \
 --attribute-names ApproximateNumberOfMessages
 ```
+
+使用 describe-auto-scaling-groups (https://docs.aws.amazon.com/cli/latest/reference/autoscaling/describe-auto-scaling-groups.html) 命令获取组的运行容量，这是处于 InService 生命周期状态的实例数。此命令返回 Auto Scaling 组的实例及其生命周期状态。
+```
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names my-asg
+
+```
+
+通过将可从队列中检索的消息的大概数量除以队列的运行容量，计算每个实例的任务数量。按照 1 分钟的粒度将结果发布为 CloudWatch 自定义指标。以下是示例将指标数据分析 (https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/put-metric-data.html)命令。
+```
+aws cloudwatch put-metric-data --metric-name MyBacklogPerInstance --namespace MyNamespace \
+--unit None --value 20 —dimensions MyOptionalMetricDimensionName=MyOptionalMetricDimensionValue
+
+```
+
+us-east-2使用approximatenumberofmessagesvisible作为metric，用如下命令获取，同样适用put-metric-data上传：
+```
+aws sqs get-queue-attributes --queue-url https://sqs.region.amazonaws.com/123456789/MyQueue \
+--attribute-names ApproximateNumberOfMessagesvisile
+
+```
+### 创建ASG
+我们假设每台EC2实例最佳处理任务数是20，同时预估us-east-1的ASG大约200台EC2实例规模。那么可以将us-east-1的ASG target tracking scaling自定义指标设置为20，将us-east-2的target tracking scaling自定义指标设置为200。由于target tracking scaling自定义的指标的ASG只能用命令行创建，参考：https://docs.aws.amazon.com/zh_cn/autoscaling/ec2/userguide/as-scaling-target-tracking.html#target-tracking-policy-creating-aws-cli
+
+### 创建lambda：
+将repo中的enable_ohio.py,disable_ohio.py,enable_rule.py,disable_rule.py分别创建为lambda funtion。
+
+### 创建Cloudwatch rule：
+如下图，当virginiaASG的EC2实例启动失败时，运行启动ohioASG的lambda，并且关闭当前cloudwatch rule，开启监控virginiaASG的EC2实例启动成功的cloudwatch rule。
+
+反之，再创建一遍。
+![cloudwatch](./cloudwatch.png)
+
+部署完成。
